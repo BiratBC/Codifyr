@@ -12,13 +12,14 @@ import { useParams, useRouter } from "next/navigation";
 import Head from "next/head";
 import type { Message, Status } from "@/types/wstypes";
 import { formatTime } from "@/utils/helperFunc";
+import CollaborativeEditor from "@/components/editor/CollaborativeEditor";
 const WS_URL = "ws://localhost:5000";
 
 
 export default function Room() {
   const router = useRouter();
   const params = useParams();
-  const code = params?.code as string | undefined;
+  const code = params?.roomId as string | undefined;
 
   const [status, setStatus] = useState<Status>("connecting");
 
@@ -296,7 +297,16 @@ export default function Room() {
         </aside>
 
         {/* Main */}
-        <main className="flex min-w-0 flex-1 flex-col">
+        <main className="flex min-w-0 flex-1">
+          {/* Code editor */}
+          <div className="min-w-0 flex-1 border-r border-white/10">
+            {code && username ? (
+              <CollaborativeEditor roomCode={code} username={username} />
+            ) : null}
+          </div>
+
+          {/* Chat column */}
+          <div className="flex w-80 flex-shrink-0 flex-col">
           {/* Header */}
           <header className="flex h-14 items-center gap-3 border-b border-white/10 bg-[#111111] px-5">
             <button
@@ -413,6 +423,7 @@ export default function Room() {
             >
               ↑
             </button>
+          </div>
           </div>
         </main>
       </div>

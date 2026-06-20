@@ -17,7 +17,6 @@ export default function Lobby() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [createdCode, setCreatedCode] = useState("");
-
   useEffect(() => {
   setCreatedCode(randomCode());
 }, []);
@@ -57,7 +56,7 @@ export default function Lobby() {
 
       try {
         const res = await fetch(
-          `http://localhost:5000/editor/${joinCode}`
+          `http://localhost:5000/room/${joinCode}`
         );
 
         const data = await res.json();

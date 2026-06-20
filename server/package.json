@@ -4,7 +4,9 @@
   "description": "",
   "main": "index.ts",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "nodemon --exec ts-node index.ts",
+    "yjs": "nodemon --exec ts-node yjs/yjsServer.ts"
   },
   "keywords": [],
   "author": "",
@@ -12,7 +14,10 @@
   "type": "commonjs",
   "dependencies": {
     "express": "^5.2.1",
-    "socket.io": "^4.8.3"
+    "socket.io": "^4.8.3",
+    "ws": "^8.18.0",
+    "yjs": "^13.6.18",
+    "y-websocket": "^2.0.4"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
