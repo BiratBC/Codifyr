@@ -13,6 +13,9 @@ import Head from "next/head";
 import type { Message, Status } from "@/types/wstypes";
 import { formatTime } from "@/utils/helperFunc";
 import CollaborativeEditor from "@/components/editor/CollaborativeEditor";
+import FileExplorer, { FileEntry } from "@/components/editor/FileExplorer";
+import CodeRunner from "@/components/editor/CodeRunner";
+import { langFromFilename } from "@/components/editor/FileExplorer";
 const WS_URL = "ws://localhost:5000";
 
 
@@ -34,6 +37,9 @@ export default function Room() {
   const [username, setUsername] = useState("");
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [activeFile, setActiveFile] = useState<FileEntry | null>(null);
+  const [showRunner, setShowRunner] = useState(false);
+  const [editorCode, setEditorCode] = useState("");
 
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -59,6 +65,9 @@ export default function Room() {
   const connect = useCallback(
     (roomCode: string, name: string) => {
       if (wsRef.current) {
+        // Mark the old socket as an intentional close so its onclose
+        // handler below knows not to schedule a reconnect for it.
+        (wsRef.current as any)._intentionalClose = true;
         wsRef.current.close();
       }
 
@@ -111,6 +120,11 @@ export default function Room() {
       ws.onclose = () => {
         setStatus("disconnected");
 
+        // Don't auto-reconnect if we closed this socket ourselves
+        // (e.g. because connect() was called again, or the component
+        // unmounted). Only real, unexpected drops should retry.
+        if ((ws as any)._intentionalClose) return;
+
         reconnectRef.current = setTimeout(() => {
           const storedName = sessionStorage.getItem("chat_username");
 
@@ -120,7 +134,12 @@ export default function Room() {
         }, 3000);
       };
 
-      ws.onerror = () => ws.close();
+      ws.onerror = () => {
+        // WebSocket automatically closes after an error — we don't need
+        // to call ws.close() here. Calling it manually was bypassing the
+        // _intentionalClose guard and causing an infinite reconnect loop.
+        setStatus("disconnected");
+      };
     },
     [addMessage],
   );
@@ -145,9 +164,12 @@ export default function Room() {
         clearTimeout(reconnectRef.current);
       }
 
-      wsRef.current?.close();
+      if (wsRef.current) {
+        (wsRef.current as any)._intentionalClose = true;
+        wsRef.current.close();
+      }
     };
-  }, [code, connect, router]);
+  }, [code, connect]); // router intentionally omitted — only used for one-time redirect on mount
 
   // Auto scroll
   useEffect(() => {
@@ -298,11 +320,60 @@ export default function Room() {
 
         {/* Main */}
         <main className="flex min-w-0 flex-1">
+          {/* File explorer */}
+          {code && (
+            <FileExplorer
+              roomCode={code}
+              activeFile={activeFile?.name ?? null}
+              onFileSelect={setActiveFile}
+              onFilesChange={(files) => {
+                // Auto-select first file if none selected yet
+                if (!activeFile && files.length > 0) setActiveFile(files[0]);
+              }}
+            />
+          )}
+
           {/* Code editor */}
-          <div className="min-w-0 flex-1 border-r border-white/10">
-            {code && username ? (
-              <CollaborativeEditor roomCode={code} username={username} />
-            ) : null}
+          <div className="min-w-0 flex-1 border-r border-white/10 flex flex-col">
+            {/* Active file tab + run button */}
+            {activeFile && (
+              <div className="flex h-9 items-center gap-2 border-b border-white/10 bg-[#111111] px-4">
+                <span className="font-mono text-xs text-zinc-300 flex-1">
+                  {activeFile.name}
+                </span>
+                <button
+                  onClick={() => setShowRunner((s) => !s)}
+                  className="flex items-center gap-1 rounded bg-emerald-400 px-2.5 py-1 font-mono text-xs font-bold text-black hover:bg-emerald-300 transition"
+                >
+                  ▶ Run
+                </button>
+              </div>
+            )}
+            <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+              {code && username && activeFile ? (
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  <CollaborativeEditor
+                    roomCode={code}
+                    username={username}
+                    filename={activeFile.name}
+                    onCodeChange={setEditorCode}
+                  />
+                </div>
+              ) : (
+                <div className="flex flex-1 items-center justify-center text-sm text-zinc-600">
+                  {activeFile ? "Loading…" : "Create or select a file →"}
+                </div>
+              )}
+              {showRunner && activeFile && (
+                <div className="h-56 flex-shrink-0">
+                  <CodeRunner
+                    code={editorCode}
+                    language={langFromFilename(activeFile.name)}
+                    onClose={() => setShowRunner(false)}
+                  />
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Chat column */}

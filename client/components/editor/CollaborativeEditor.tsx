@@ -88,6 +88,8 @@ function loadYMonaco() {
   return yMonacoLoadPromise;
 }
 
+import { langFromFilename } from "./FileExplorer";
+
 const YJS_WS_URL = "ws://localhost:5001";
 
 type SyncStatus = "connecting" | "connected" | "disconnected";
@@ -95,7 +97,8 @@ type SyncStatus = "connecting" | "connected" | "disconnected";
 interface CollaborativeEditorProps {
   roomCode: string;
   username: string;
-  language?: string;
+  filename: string;
+  onCodeChange?: (code: string) => void;
 }
 
 // A handful of distinct colors so each user's cursor/selection is
@@ -117,8 +120,12 @@ function colorForName(name: string) {
 export default function CollaborativeEditor({
   roomCode,
   username,
-  language = "javascript",
+  filename,
+  onCodeChange,
 }: CollaborativeEditorProps) {
+  const language = langFromFilename(filename);
+  // Each file gets its own Yjs doc, keyed by roomCode:filename
+  const docName = `${roomCode}:${filename}`;
   const [status, setStatus] = useState<SyncStatus>("connecting");
   const [onlineCount, setOnlineCount] = useState(1);
 
@@ -148,7 +155,7 @@ export default function CollaborativeEditor({
     const doc = new Y.Doc();
     docRef.current = doc;
 
-    const provider = new WebsocketProvider(YJS_WS_URL, roomCode, doc);
+    const provider = new WebsocketProvider(YJS_WS_URL, docName, doc);
     providerRef.current = provider;
 
     provider.awareness.setLocalStateField("user", {
@@ -168,11 +175,17 @@ export default function CollaborativeEditor({
 
     return () => {
       provider.awareness.off("change", updatePresence);
-      bindingRef.current?.destroy();
+      // Destroy binding first — it holds a reference to yText which
+      // lives inside doc. If we destroy doc first, binding.destroy()
+      // tries to unobserve an already-gone yText and yjs warns.
+      if (bindingRef.current) {
+        bindingRef.current.destroy();
+        bindingRef.current = null;
+      }
       provider.destroy();
       doc.destroy();
     };
-  }, [roomCode, username]);
+  }, [docName, username]);
 
   const handleMount: OnMount = (editor) => {
     const doc = docRef.current;
@@ -188,6 +201,13 @@ export default function CollaborativeEditor({
       new Set([editor]),
       provider.awareness
     );
+
+    // Emit current code whenever it changes (for the code runner)
+    editor.onDidChangeModelContent(() => {
+      onCodeChange?.(editor.getValue());
+    });
+    // Emit initial value too
+    onCodeChange?.(editor.getValue());
   };
 
   const statusColor =
@@ -216,6 +236,7 @@ export default function CollaborativeEditor({
           <Editor
             height="100%"
             defaultLanguage={language}
+            language={language}
             theme="vs-dark"
             onMount={handleMount}
             options={{

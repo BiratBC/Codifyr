@@ -54,9 +54,14 @@ function leaveRoom(ws : any) {
 
 // ─── WebSocket ─────────────────────────────────────────────────────────────────
 
-wss.on("connection", (ws : any) => {
+wss.on("connection", (ws: any) => {
+  console.log(`[NEW] ${new Date().toISOString()}`);  // ← add this
   ws._room = null;
   ws._username = null;
+
+  ws.on("close", (code: any, reason: any) => {       // ← add this whole block
+    console.log(`[CLOSE] code:${code} room:${ws._room}`);
+  });
 
   ws.on("message", (raw : any) => {
     let data;
