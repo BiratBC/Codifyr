@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 
-const YJS_WS_URL = "ws://localhost:5001";
+const YJS_WS_URL = "ws://localhost:5000";
 
 // File extension → Monaco language ID
 export function langFromFilename(name: string): string {

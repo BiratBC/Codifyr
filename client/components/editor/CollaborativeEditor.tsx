@@ -90,7 +90,7 @@ function loadYMonaco() {
 
 import { langFromFilename } from "./FileExplorer";
 
-const YJS_WS_URL = "ws://localhost:5001";
+const YJS_WS_URL = "ws://localhost:5000";
 
 type SyncStatus = "connecting" | "connected" | "disconnected";
 
