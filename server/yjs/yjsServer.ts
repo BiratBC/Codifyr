@@ -31,7 +31,7 @@ wss.on("connection", (ws, req) => {
   setupWSConnection(ws, req);
 });
 
-const PORT = process.env.YJS_PORT || 5001;
+const PORT = process.env.YJS_PORT || 6000;
 server.listen(PORT, () => {
   console.log(`\n🧩  Yjs sync server  →  ws://localhost:${PORT}\n`);
 });

@@ -2,10 +2,14 @@ const express = require("express");
 const { WebSocketServer } = require("ws");
 const http = require("http");
 const cors = require("cors");
+import githubAuth from "./github/githubAuth";
+import repositories from "./github/repositories";
 
 const app = express();
 app.use(cors({ origin: "http://localhost:3000" }));
 app.use(express.json());
+app.use("/auth/github", githubAuth);
+app.use("/github/repositories", repositories);
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
