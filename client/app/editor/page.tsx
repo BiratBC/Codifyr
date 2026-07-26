@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Head from "next/head";
 
+
 // Generates a random 6-char uppercase room code
 function randomCode() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -55,16 +56,14 @@ export default function Lobby() {
       setLoading(true);
 
       try {
-        const res = await fetch(
-          `http://localhost:5000/room/${joinCode}`
-        );
-
-        const data = await res.json();
-
-        if (!data.exists) {
-          setLoading(false);
-          return setError("Room not found. Double-check the code.");
-        }
+       const res = await fetch(
+  `/api/rooms/check?code=${joinCode}`
+);
+const data = await res.json();
+if (!data.exists) {
+  setLoading(false);
+  return setError("Room not found. Double-check the code.");
+}
       } catch {
         setLoading(false);
         return setError("Cannot reach the server. Is it running?");

@@ -99,6 +99,7 @@ interface CollaborativeEditorProps {
   username: string;
   filename: string;
   onCodeChange?: (code: string) => void;
+  initialContent?: string; // ← add this
 }
 
 // A handful of distinct colors so each user's cursor/selection is
@@ -122,6 +123,7 @@ export default function CollaborativeEditor({
   username,
   filename,
   onCodeChange,
+  initialContent = "",
 }: CollaborativeEditorProps) {
   const language = langFromFilename(filename);
   // Each file gets its own Yjs doc, keyed by roomCode:filename
@@ -162,10 +164,22 @@ export default function CollaborativeEditor({
       name: username,
       color: colorForName(username),
     });
+    provider.on("sync", (synced: boolean) => {
+  if (synced) {
+    const yText = doc.getText("monaco");
+    // Only seed if the document is genuinely empty
+    if (yText.length === 0 && initialContent) {
+      doc.transact(() => {
+        yText.insert(0, initialContent);
+      });
+    }
+  }
+});
 
     provider.on("status", ({ status: s }: { status: string }) => {
       setStatus(s === "connected" ? "connected" : "connecting");
     });
+ 
 
     const updatePresence = () => {
       setOnlineCount(provider.awareness.getStates().size);

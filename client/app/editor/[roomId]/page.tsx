@@ -16,6 +16,7 @@ import CollaborativeEditor from "@/components/editor/CollaborativeEditor";
 import FileExplorer, { FileEntry } from "@/components/editor/FileExplorer";
 import CodeRunner from "@/components/editor/CodeRunner";
 import { langFromFilename } from "@/components/editor/FileExplorer";
+import { usePersistedFiles } from "@/hooks/usePersistedFiles";
 const WS_URL = "ws://localhost:5000";
 
 
@@ -50,6 +51,10 @@ export default function Room() {
   const reconnectRef = useRef<NodeJS.Timeout | null>(null);
 
   const messageIdRef = useRef(0);
+  const { saveFile, deleteFile, createFile, loadedFiles, loaded, getInitialContent } = usePersistedFiles({
+  roomCode: code ?? "",
+  username,
+});
 
   const addMessage = useCallback((msg: Message) => {
     messageIdRef.current += 1;
@@ -350,20 +355,23 @@ export default function Room() {
               </div>
             )}
             <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-              {code && username && activeFile ? (
-                <div className="flex-1 min-h-0 overflow-hidden">
-                  <CollaborativeEditor
+            {code && username && activeFile && loaded ? (
+  <div className="flex-1 min-h-0 overflow-hidden">
+    <CollaborativeEditor
                     roomCode={code}
                     username={username}
                     filename={activeFile.name}
-                    onCodeChange={setEditorCode}
+                    onCodeChange={(newCode) => {
+  setEditorCode(newCode);
+  saveFile(activeFile!.name, newCode);
+}}
                   />
                 </div>
               ) : (
-                <div className="flex flex-1 items-center justify-center text-sm text-zinc-600">
-                  {activeFile ? "Loading…" : "Create or select a file →"}
-                </div>
-              )}
+  <div className="flex flex-1 items-center justify-center text-sm text-zinc-600">
+    {!loaded ? "Loading files…" : activeFile ? "Loading…" : "Create or select a file →"}
+  </div>
+)}
               {showRunner && activeFile && (
                 <div className="h-56 flex-shrink-0">
                   <CodeRunner
