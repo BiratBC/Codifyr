@@ -59,9 +59,17 @@ export default function CodeRunner({ code, language, onClose }: CodeRunnerProps)
 
     try {
       if (language === "javascript") {
-        await runViaPiston(code, "javascript");
+        try {
+          await runViaPiston(code, "javascript");
+        } catch {
+          await runJS(code);
+        }
       } else if (language === "typescript") {
-        await runViaPiston(code, "typescript");
+        try {
+          await runViaPiston(code, "typescript");
+        } catch {
+          await runTS(code);
+        }
       } else if (language === "python") {
         await runPython(code);
       } else if (language === "html") {

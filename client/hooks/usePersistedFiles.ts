@@ -1,10 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
-import { FileEntry } from "@/components/editor/FileExplorer";
+import { useCallback, useEffect, useState } from "react";
 import { langFromFilename } from "@/components/editor/FileExplorer";
 
-// Debounce helper — only calls fn after `delay` ms of no new calls
 function debounce<T extends (...args: any[]) => any>(fn: T, delay: number) {
   let timer: ReturnType<typeof setTimeout>;
   return (...args: Parameters<T>) => {
@@ -13,66 +11,134 @@ function debounce<T extends (...args: any[]) => any>(fn: T, delay: number) {
   };
 }
 
-interface UsePersistedFilesOptions {
-  roomCode: string;
-  onLoad?: (files: { name: string; content: string }[]) => void;
+export interface PersistedFile {
+  name: string;
+  path: string;
+  content: string;
 }
 
-export function usePersistedFiles({ roomCode, onLoad }: UsePersistedFilesOptions) {
-  const loadedRef = useRef(false);
+export function usePersistedFiles(roomCode: string, username?: string) {
+  const [loadedFiles, setLoadedFiles] = useState<PersistedFile[]>([]);
+  const [loaded, setLoaded] = useState(false);
 
-  // Load files from Supabase on first mount
   useEffect(() => {
-    if (loadedRef.current || !roomCode) return;
-    loadedRef.current = true;
+    // Don't run until roomCode is actually available
+    if (!roomCode) return;
+
+    console.log("[files] fetching for room:", roomCode);
 
     fetch(`/api/files?roomCode=${roomCode}`)
       .then((r) => r.json())
       .then(({ files }) => {
-        if (files?.length > 0) {
-          onLoad?.(files);
-        }
+        console.log("[files] loaded:", files);
+        setLoadedFiles(
+          (files ?? []).map((f: any) => ({
+            name: f.name,
+            path: f.path || f.name,
+            content: f.content ?? "",
+          }))
+        );
+        setLoaded(true);
       })
-      .catch(console.error);
-  }, [roomCode, onLoad]);
+      .catch((err) => {
+        console.error("[files] fetch error:", err);
+        setLoaded(true);
+      });
 
-  // Save a file to Supabase (debounced — waits 2s after last keystroke)
-  const saveFile = useCallback(
-    debounce((filename: string, content: string) => {
+    // Record member joining
+    if (username) {
+      fetch("/api/rooms/join", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ roomCode, username }),
+      }).catch(console.error);
+    }
+  }, [roomCode]); // re-runs if roomCode changes from "" to actual value
+
+  const saveFileNow = useCallback(
+    (filePath: string, content: string) => {
+      if (!roomCode || !filePath) return;
+      setLoadedFiles((prev) => {
+        const exists = prev.some((f) => f.path === filePath || f.name === filePath);
+        if (exists) {
+          return prev.map((f) =>
+            f.path === filePath || f.name === filePath ? { ...f, content } : f
+          );
+        }
+        return [...prev, { name: filePath.split("/").pop() ?? filePath, path: filePath, content }];
+      });
+
       fetch("/api/files", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           roomCode,
-          filename,
-          language: langFromFilename(filename),
+          path: filePath,
+          filename: filePath.split("/").pop() ?? filePath,
+          language: langFromFilename(filePath),
           content,
         }),
       }).catch(console.error);
-    }, 2000),
+    },
     [roomCode]
   );
 
-  // Delete a file from Supabase
+  const saveFile = useCallback(
+    debounce((filePath: string, content: string) => {
+      saveFileNow(filePath, content);
+    }, 500),
+    [saveFileNow]
+  );
+
   const deleteFile = useCallback(
-    (filename: string) => {
-      fetch(`/api/files?roomCode=${roomCode}&filename=${encodeURIComponent(filename)}`, {
+    (filePath: string) => {
+      if (!roomCode || !filePath) return;
+      fetch(
+        `/api/files?roomCode=${roomCode}&path=${encodeURIComponent(filePath)}&filename=${encodeURIComponent(filePath)}`,
+        {
+          method: "DELETE",
+        }
+      ).catch(console.error);
+    },
+    [roomCode]
+  );
+
+  const createFolder = useCallback(
+    (folderPath: string) => {
+      if (!roomCode || !folderPath) return;
+      fetch("/api/folders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          roomCode,
+          path: folderPath,
+        }),
+      }).catch(console.error);
+    },
+    [roomCode]
+  );
+
+  const deleteFolder = useCallback(
+    (folderPath: string) => {
+      if (!roomCode || !folderPath) return;
+      fetch(`/api/folders?roomCode=${roomCode}&path=${encodeURIComponent(folderPath)}`, {
         method: "DELETE",
       }).catch(console.error);
     },
     [roomCode]
   );
 
-  // Register a new file in Supabase immediately (with empty content)
   const createFile = useCallback(
-    (filename: string) => {
+    (filePath: string) => {
+      if (!roomCode || !filePath) return;
       fetch("/api/files", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           roomCode,
-          filename,
-          language: langFromFilename(filename),
+          path: filePath,
+          filename: filePath.split("/").pop() ?? filePath,
+          language: langFromFilename(filePath),
           content: "",
         }),
       }).catch(console.error);
@@ -80,5 +146,26 @@ export function usePersistedFiles({ roomCode, onLoad }: UsePersistedFilesOptions
     [roomCode]
   );
 
-  return { saveFile, deleteFile, createFile };
+  const getInitialContent = useCallback(
+    (filePath: string) => {
+      return (
+        loadedFiles.find(
+          (f) => f.path === filePath || f.name === filePath
+        )?.content ?? ""
+      );
+    },
+    [loadedFiles]
+  );
+
+  return {
+    saveFile,
+    saveFileNow,
+    deleteFile,
+    createFile,
+    createFolder,
+    deleteFolder,
+    loadedFiles,
+    loaded,
+    getInitialContent,
+  };
 }
