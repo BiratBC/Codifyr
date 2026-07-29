@@ -7,18 +7,6 @@ import { WebsocketProvider } from "y-websocket";
 import type { MonacoBinding as MonacoBindingType } from "y-monaco";
 import type * as Monaco from "monaco-editor";
 
-// monaco-editor touches `window` as soon as its module is evaluated, which
-// crashes Next.js's server-side render pass for this client component (no
-// `window` exists there). So instead of a static top-level import, we load
-// it dynamically — this only ever runs in the browser, after mount — and
-// point @monaco-editor/react's loader at that instance so it matches the
-// one y-monaco's MonacoBinding will bind against.
-//
-// We also wire up MonacoEnvironment.getWorker here. Without it, Monaco
-// can't find its web workers (the bundler/Turbopack doesn't know to
-// emit them automatically) and silently falls back to running tokenizing,
-// language features, etc. on the main thread — which works, but can
-// cause noticeable typing lag/jank in larger files.
 let monacoLoadPromise: Promise<typeof Monaco> | null = null;
 function loadMonaco() {
   if (!monacoLoadPromise) {

@@ -12,10 +12,6 @@
 import { WebSocketServer } from "ws";
 import http from "http";
 
-// y-websocket ships a ready-made connection handler that wires a raw
-// `ws` WebSocket up to a Yjs document, including awareness (cursor
-// position / selection / user presence) and persistence hooks.
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { setupWSConnection } = require("y-websocket/bin/utils");
 
 const server = http.createServer((req, res) => {

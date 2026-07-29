@@ -65,7 +65,7 @@ export default function Home() {
       {/* Nav */}
       <nav className="relative z-10 flex w-full max-w-5xl items-center justify-between py-8">
         <div className="flex items-center gap-2.5">
-          <span className="text-2xl text-emerald-400">▣</span>
+          <span className="text-2xl text-emerald-400"><img src="/icon.png" alt="" height={24} width={24}/></span>
           <span className="font-mono text-xl font-bold tracking-tight">
             codifyr
           </span>
