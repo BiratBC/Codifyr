@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Head from "next/head";
 
+
 // Generates a random 6-char uppercase room code
 function randomCode() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -14,19 +15,20 @@ export default function Lobby() {
   const [tab, setTab] = useState("create");
   const [username, setUsername] = useState("");
   const [joinCode, setJoinCode] = useState("");
+  const [passcode, setPasscode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [createdCode, setCreatedCode] = useState("");
   useEffect(() => {
-  setCreatedCode(randomCode());
-}, []);
+    setCreatedCode(randomCode());
+  }, []);
 
-  function handleUsernameChange(e : any) {
+  function handleUsernameChange(e: any) {
     setUsername(e.target.value);
     setError("");
   }
 
-  function handleJoinCodeChange(e : any) {
+  function handleJoinCodeChange(e: any) {
     setJoinCode(
       e.target.value
         .toUpperCase()
@@ -36,7 +38,7 @@ export default function Lobby() {
     setError("");
   }
 
-  async function handleSubmit(e : any) {
+  async function handleSubmit(e: any) {
     e.preventDefault();
 
     const name = username.trim();
@@ -47,6 +49,8 @@ export default function Lobby() {
     if (name.length > 20)
       return setError("Username must be under 20 characters.");
 
+    const code = tab === "create" ? createdCode : joinCode;
+
     if (tab === "join") {
       if (joinCode.length !== 6) {
         return setError("Room code must be exactly 6 characters.");
@@ -55,12 +59,8 @@ export default function Lobby() {
       setLoading(true);
 
       try {
-        const res = await fetch(
-          `http://localhost:5000/room/${joinCode}`
-        );
-
+        const res = await fetch(`/api/rooms/check?code=${joinCode}`);
         const data = await res.json();
-
         if (!data.exists) {
           setLoading(false);
           return setError("Room not found. Double-check the code.");
@@ -69,9 +69,22 @@ export default function Lobby() {
         setLoading(false);
         return setError("Cannot reach the server. Is it running?");
       }
+    } else {
+      setLoading(true);
+      try {
+        await fetch("/api/rooms/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            roomCode: code,
+            username: name,
+            passcode: passcode.trim(),
+          }),
+        });
+      } catch (err) {
+        console.error("Room creation error:", err);
+      }
     }
-
-    const code = tab === "create" ? createdCode : joinCode;
 
     sessionStorage.setItem("chat_username", name);
 
@@ -109,7 +122,7 @@ export default function Lobby() {
           </div>
 
           <p className="mb-7 text-sm text-zinc-400">
-            Real-time chat with shareable room codes.
+            Real-time chat with shareable room codes & ownership passcodes.
           </p>
 
           {/* Tabs */}
@@ -128,18 +141,13 @@ export default function Lobby() {
                     : "text-zinc-400 hover:text-white"
                 }`}
               >
-                {t === "create"
-                  ? "＋ Create room"
-                  : "↗ Join room"}
+                {t === "create" ? "＋ Create room" : "↗ Join room"}
               </button>
             ))}
           </div>
 
           {/* Form */}
-          <form
-            onSubmit={handleSubmit}
-            className="flex flex-col gap-2"
-          >
+          <form onSubmit={handleSubmit} className="flex flex-col gap-2">
             {/* Username */}
             <label className="mt-1 text-xs font-semibold uppercase tracking-widest text-zinc-500">
               Your name
@@ -155,29 +163,44 @@ export default function Lobby() {
               className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-[15px] text-white outline-none transition focus:border-emerald-400"
             />
 
-            {/* Create room preview */}
+            {/* Create room preview & Passcode */}
             {tab === "create" && (
-              <div className="mt-1 flex items-center gap-3 rounded-xl border border-white/10 bg-black/40 px-4 py-3">
-                <span className="text-xs font-medium text-zinc-400">
-                  Room code
-                </span>
+              <>
+                <div className="mt-1 flex items-center gap-3 rounded-xl border border-white/10 bg-black/40 px-4 py-3">
+                  <span className="text-xs font-medium text-zinc-400">
+                    Room code
+                  </span>
 
-                <span className="flex-1 font-mono text-xl tracking-[0.25em] text-emerald-400">
-                  {createdCode}
-                </span>
+                  <span className="flex-1 font-mono text-xl tracking-[0.25em] text-emerald-400">
+                    {createdCode}
+                  </span>
 
-                <button
-                  type="button"
-                  title="Generate new code"
-                  onClick={() => {
-                    setCreatedCode(randomCode());
-                    setError("");
-                  }}
-                  className="flex h-8 w-8 items-center justify-center rounded-md border border-white/10 bg-zinc-800 text-sm text-zinc-300 transition hover:bg-zinc-700"
-                >
-                  ↻
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    title="Generate new code"
+                    onClick={() => {
+                      setCreatedCode(randomCode());
+                      setError("");
+                    }}
+                    className="flex h-8 w-8 items-center justify-center rounded-md border border-white/10 bg-zinc-800 text-sm text-zinc-300 transition hover:bg-zinc-700"
+                  >
+                    ↻
+                  </button>
+                </div>
+
+                <label className="mt-2 text-xs font-semibold uppercase tracking-widest text-zinc-500">
+                  Owner PIN / Passcode (Optional)
+                </label>
+
+                <input
+                  type="password"
+                  placeholder="e.g. 1234 (Secret PIN to reclaim owner access)"
+                  value={passcode}
+                  onChange={(e) => setPasscode(e.target.value)}
+                  maxLength={20}
+                  className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white outline-none transition focus:border-emerald-400"
+                />
+              </>
             )}
 
             {/* Join room */}
@@ -199,11 +222,7 @@ export default function Lobby() {
             )}
 
             {/* Error */}
-            {error && (
-              <p className="mt-1 text-sm text-red-400">
-                ⚠ {error}
-              </p>
-            )}
+            {error && <p className="mt-1 text-sm text-red-400">⚠ {error}</p>}
 
             {/* Submit */}
             <button

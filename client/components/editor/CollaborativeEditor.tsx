@@ -15,49 +15,23 @@ function loadMonaco() {
         getWorker(_moduleId: string, label: string) {
           switch (label) {
             case "json":
-              return new Worker(
-                new URL(
-                  "monaco-editor/esm/vs/language/json/json.worker?worker",
-                  import.meta.url
-                )
-              );
+              return new Worker(new URL("monaco-editor/esm/vs/language/json/json.worker?worker", import.meta.url));
             case "css":
             case "scss":
             case "less":
-              return new Worker(
-                new URL(
-                  "monaco-editor/esm/vs/language/css/css.worker?worker",
-                  import.meta.url
-                )
-              );
+              return new Worker(new URL("monaco-editor/esm/vs/language/css/css.worker?worker", import.meta.url));
             case "html":
             case "handlebars":
             case "razor":
-              return new Worker(
-                new URL(
-                  "monaco-editor/esm/vs/language/html/html.worker?worker",
-                  import.meta.url
-                )
-              );
+              return new Worker(new URL("monaco-editor/esm/vs/language/html/html.worker?worker", import.meta.url));
             case "typescript":
             case "javascript":
-              return new Worker(
-                new URL(
-                  "monaco-editor/esm/vs/language/typescript/ts.worker?worker",
-                  import.meta.url
-                )
-              );
+              return new Worker(new URL("monaco-editor/esm/vs/language/typescript/ts.worker?worker", import.meta.url));
             default:
-              return new Worker(
-                new URL(
-                  "monaco-editor/esm/vs/editor/editor.worker?worker",
-                  import.meta.url
-                )
-              );
+              return new Worker(new URL("monaco-editor/esm/vs/editor/editor.worker?worker", import.meta.url));
           }
         },
       };
-
       loader.config({ monaco: mod });
       return mod;
     });
@@ -65,9 +39,6 @@ function loadMonaco() {
   return monacoLoadPromise;
 }
 
-// y-monaco itself also touches browser-only APIs at module-evaluation
-// time (same SSR problem as monaco-editor above), so it needs the same
-// dynamic-import treatment rather than a static top-level import.
 let yMonacoLoadPromise: Promise<typeof import("y-monaco")> | null = null;
 function loadYMonaco() {
   if (!yMonacoLoadPromise) {
@@ -85,13 +56,13 @@ type SyncStatus = "connecting" | "connected" | "disconnected";
 interface CollaborativeEditorProps {
   roomCode: string;
   username: string;
-  filename: string;
+  filename?: string;
+  filePath?: string;
   onCodeChange?: (code: string) => void;
+  initialContent?: string;
+  isOwner?: boolean;
 }
 
-// A handful of distinct colors so each user's cursor/selection is
-// visually identifiable. Picked deterministically from the username
-// so the same person gets the same color across reconnects.
 const CURSOR_COLORS = [
   "#f87171", "#fb923c", "#fbbf24", "#a3e635",
   "#34d399", "#22d3ee", "#60a5fa", "#a78bfa", "#f472b6",
@@ -109,36 +80,55 @@ export default function CollaborativeEditor({
   roomCode,
   username,
   filename,
+  filePath,
   onCodeChange,
+  initialContent = "",
+  isOwner = true,
 }: CollaborativeEditorProps) {
-  const language = langFromFilename(filename);
-  // Each file gets its own Yjs doc, keyed by roomCode:filename
-  const docName = `${roomCode}:${filename}`;
+  const activePath = filePath || filename || "";
+  const language = langFromFilename(activePath);
+  const docName = `${roomCode}:${activePath}`;
+
   const [status, setStatus] = useState<SyncStatus>("connecting");
   const [onlineCount, setOnlineCount] = useState(1);
-
   const [monacoReady, setMonacoReady] = useState(false);
 
   const docRef = useRef<Y.Doc | null>(null);
   const providerRef = useRef<WebsocketProvider | null>(null);
   const bindingRef = useRef<MonacoBindingType | null>(null);
   const MonacoBindingClassRef = useRef<typeof MonacoBindingType | null>(null);
+  const initialContentRef = useRef(initialContent);
 
-  // Kick off the dynamic monaco-editor + y-monaco imports once, browser only.
+  // Keep initialContentRef in sync and update Yjs text on revert / accept
+  const prevContentRef = useRef(initialContent);
+  useEffect(() => {
+    initialContentRef.current = initialContent;
+    if (prevContentRef.current !== initialContent && docRef.current) {
+      prevContentRef.current = initialContent;
+      const yText = docRef.current.getText("monaco");
+      if (isOwner && yText.toString() !== initialContent && initialContent !== undefined) {
+        docRef.current.transact(() => {
+          yText.delete(0, yText.length);
+          yText.insert(0, initialContent);
+        });
+      }
+    }
+  }, [initialContent, isOwner]);
+
+  // Load monaco-editor and y-monaco dynamically (browser only)
   useEffect(() => {
     let cancelled = false;
-    Promise.all([loadMonaco(), loadYMonaco()]).then(([, yMonacoMod]) => {
-      if (cancelled) return;
-      MonacoBindingClassRef.current = yMonacoMod.MonacoBinding;
-      setMonacoReady(true);
-    });
-    return () => {
-      cancelled = true;
-    };
+    Promise.all([loadMonaco(), loadYMonaco()])
+      .then(([, yMonacoMod]) => {
+        if (cancelled) return;
+        MonacoBindingClassRef.current = yMonacoMod.MonacoBinding;
+        setMonacoReady(true);
+      })
+      .catch((err) => console.error("[monaco] load failed:", err));
+    return () => { cancelled = true; };
   }, []);
 
-  // Keep references alive across the component's lifetime; clean up
-  // the Yjs doc + provider + binding when the room/editor unmounts.
+  // Set up Yjs doc + WebSocket provider
   useEffect(() => {
     const doc = new Y.Doc();
     docRef.current = doc;
@@ -163,9 +153,6 @@ export default function CollaborativeEditor({
 
     return () => {
       provider.awareness.off("change", updatePresence);
-      // Destroy binding first — it holds a reference to yText which
-      // lives inside doc. If we destroy doc first, binding.destroy()
-      // tries to unobserve an already-gone yText and yjs warns.
       if (bindingRef.current) {
         bindingRef.current.destroy();
         bindingRef.current = null;
@@ -183,27 +170,62 @@ export default function CollaborativeEditor({
 
     const yText = doc.getText("monaco");
 
-    bindingRef.current = new MonacoBindingClass(
-      yText,
-      editor.getModel() as Monaco.editor.ITextModel,
-      new Set([editor]),
-      provider.awareness
-    );
+    if (isOwner) {
+      // Owner mode: Live two-way binding to Yjs shared document
+      bindingRef.current = new MonacoBindingClass(
+        yText,
+        editor.getModel() as Monaco.editor.ITextModel,
+        new Set([editor]),
+        provider.awareness
+      );
 
-    // Emit current code whenever it changes (for the code runner)
+      const trySeedContent = () => {
+        if (yText.length === 0 && initialContentRef.current) {
+          doc.transact(() => {
+            if (yText.length === 0) {
+              yText.insert(0, initialContentRef.current);
+            }
+          });
+        }
+      };
+
+      trySeedContent();
+
+      const handleSync = (isSynced: boolean) => {
+        if (isSynced) {
+          trySeedContent();
+        }
+      };
+      provider.on("sync", handleSync);
+
+      setTimeout(trySeedContent, 300);
+      setTimeout(trySeedContent, 1000);
+    } else {
+      // Member mode: Local draft mode (do not mutate shared Yjs doc directly)
+      const currentApprovedText = yText.toString() || initialContentRef.current;
+      if (currentApprovedText) {
+        editor.setValue(currentApprovedText);
+      }
+
+      // Listen for owner approved updates
+      yText.observe(() => {
+        const approvedText = yText.toString();
+        if (approvedText) {
+          editor.setValue(approvedText);
+        }
+      });
+    }
+
     editor.onDidChangeModelContent(() => {
       onCodeChange?.(editor.getValue());
     });
-    // Emit initial value too
     onCodeChange?.(editor.getValue());
   };
 
   const statusColor =
-    status === "connected"
-      ? "bg-emerald-400"
-      : status === "connecting"
-      ? "bg-yellow-400"
-      : "bg-red-400";
+    status === "connected" ? "bg-emerald-400" :
+    status === "connecting" ? "bg-yellow-400" :
+    "bg-red-400";
 
   return (
     <div className="flex h-full flex-col">
